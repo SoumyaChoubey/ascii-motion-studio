@@ -3,7 +3,7 @@
 A browser-based creative tool that transforms images into animated ASCII art.  
 No installation. No sign-up. Just open and create.
 
-🔗 **[Live App → your-link-here.netlify.app]()**
+🔗 **https://soumyachoubey.github.io/ascii-motion-studio/**
 
 ---
 
@@ -63,19 +63,4 @@ Made with ✦ as a creative coding experiment.
 
 ---
 
-## When GitHub asks "Initialize with a README"
-
-Tick **yes** — then replace the default text with the README above.
-
----
-
-## The one thing to do after it goes live
-
-Once GitHub Pages gives you your URL, go back to the README, find this line:
-```
-🔗 **[Live App → your-link-here.netlify.app]()**
-```
-
-Replace it with your actual GitHub Pages URL like:
-```
-🔗 **[Live App](https://yourusername.github.io/ascii-motion-studio)**
+https://soumyachoubey.github.io/ascii-motion-studio/
