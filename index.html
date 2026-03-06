@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ASCII Motion Studio v2 · WebGL</title>
+<title>ASCII Motion Studio v3 · Live Camera</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -112,7 +112,7 @@ select.ss2 option{background:var(--sur)}
 #dz .dh{font-size:8px;color:var(--txt-m);opacity:.4}
 
 /* ── ASCII OUTPUT inner ──────────────────────── */
-#ascii-canvas{display:block;width:100%;height:100%}
+#ascii-canvas{display:block;width:100%;height:100%;background:var(--canvas-bg,#020406)}
 .scan{position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.04) 3px,rgba(0,0,0,.04) 4px);pointer-events:none;z-index:8}
 .vig{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.5) 100%);pointer-events:none;z-index:7}
 #empty-hint{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:3}
@@ -157,15 +157,39 @@ select.ss2 option{background:var(--sur)}
 #file-input{display:none}
 #proc-canvas{display:none}
 #cam-video{display:none}
+
+/* ── LIVE CAM MODE ───────────────────────────── */
+#live-bar{display:none;position:absolute;bottom:0;left:0;right:0;height:36px;background:rgba(2,4,6,.92);border-top:1px solid var(--bdr2);display:none;align-items:center;padding:0 10px;gap:8px;z-index:20;backdrop-filter:blur(4px)}
+#live-bar.on{display:flex}
+.lb{height:22px;padding:0 10px;background:transparent;border:1px solid var(--bdr2);color:var(--txt-d);font-family:var(--mono);font-size:8px;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;transition:all .12s;flex-shrink:0}
+.lb:hover{border-color:var(--acc);color:var(--acc)}
+.lb.lit{border-color:var(--acc);color:var(--acc);background:var(--acc-glo)}
+.lb.red{border-color:var(--danger);color:var(--danger)}
+.lb.red.on{background:rgba(255,68,68,.12);box-shadow:0 0 8px rgba(255,68,68,.3)}
+#live-motion-bar{flex:1;height:2px;background:var(--bdr2);position:relative;overflow:hidden}
+#live-motion-fill{position:absolute;left:0;top:0;height:100%;background:var(--acc);width:0;transition:width .08s;box-shadow:0 0 6px var(--acc)}
+#live-rec-time{font-size:8px;color:var(--danger);letter-spacing:1px;min-width:32px;display:none}
+#live-rec-time.on{display:block}
+.rec-dot{display:inline-block;width:5px;height:5px;background:var(--danger);border-radius:50%;animation:bk 1s infinite;margin-right:4px}
+
+/* Motion heatmap overlay on preview */
+#motion-ov{position:absolute;inset:0;pointer-events:none;z-index:4;opacity:0;transition:opacity .1s}
+#motion-ov.show{opacity:1}
+
+/* Cam mode indicator badge */
+#cam-mode-badge{display:none;position:absolute;top:6px;left:8px;z-index:10;background:rgba(0,232,122,.15);border:1px solid rgba(0,232,122,.4);color:var(--acc);font-size:8px;letter-spacing:2px;padding:2px 7px}
+#cam-mode-badge.on{display:block}
+
 </style>
 </head>
 <body>
 
 <!-- TOPBAR -->
 <div id="topbar">
-  <div id="logo">ASCII<span class="sub">MOTION</span><span class="ver">v2 · WebGL</span></div>
+  <div id="logo">ASCII<span class="sub">MOTION</span><span class="ver">v3 · Live Camera</span></div>
   <button class="btn lit" onclick="document.getElementById('file-input').click()">⬆ UPLOAD</button>
   <button class="btn" id="cam-btn" onclick="toggleCamera()">◉ CAMERA</button>
+  <button class="btn" id="live-btn" onclick="toggleLiveMode()">◈ LIVE ASCII</button>
   <div class="divr"></div>
   <button class="btn lit" id="anim-btn" onclick="toggleAnim()" disabled>▶ ANIMATE</button>
   <div class="divr"></div>
@@ -271,6 +295,34 @@ select.ss2 option{background:var(--sur)}
       </div>
       <button class="wb" onclick="clearSel()">CLEAR SELECTION</button>
     </div>
+    <div class="ss" id="live-sb" style="display:none">
+      <div class="sl">Live Camera</div>
+      <div class="tr">
+        <button class="tg on" id="lm-scatter"  onclick="setLiveEffect('scatter')">SCATTER</button>
+        <button class="tg"    id="lm-distort"  onclick="setLiveEffect('distort')">DISTORT</button>
+      </div>
+      <div class="tr">
+        <button class="tg"    id="lm-mutate"   onclick="setLiveEffect('mutate')">MUTATE</button>
+        <button class="tg"    id="lm-trails"   onclick="setLiveEffect('trails')">TRAILS</button>
+      </div>
+      <div class="sc">
+        <div class="sh"><span class="sn">Motion Sensitivity</span><span class="sv" id="v-msens">0.4</span></div>
+        <input type="range" id="sl-msens" min="1" max="30" value="8" oninput="scLive('msens',this.value)">
+      </div>
+      <div class="sc">
+        <div class="sh"><span class="sn">Particle Spread</span><span class="sv" id="v-mspread">1.0</span></div>
+        <input type="range" id="sl-mspread" min="1" max="40" value="10" oninput="scLive('mspread',this.value)">
+      </div>
+      <div class="sc">
+        <div class="sh"><span class="sn">Live Density</span><span class="sv" id="v-ldens">60</span></div>
+        <input type="range" id="sl-ldens" min="10" max="160" value="60" oninput="scLive('ldens',this.value)">
+      </div>
+      <div class="tr">
+        <button class="tg on" id="lmirror-tog" onclick="toggleLiveMirror()">MIRROR ON</button>
+        <button class="tg" id="lcolor-tog" onclick="toggleLiveOrigColor()">COLOR OFF</button>
+      </div>
+      <button class="wb" onclick="captureFromLive()">⬡ CAPTURE FRAME</button>
+    </div>
     <div class="ss">
       <div class="sl">Export</div>
       <button class="wb" onclick="exportPNG()">↓ EXPORT PNG</button>
@@ -289,7 +341,9 @@ select.ss2 option{background:var(--sur)}
         I · invert · ← → step<br>
         Scroll / Pinch · zoom<br>
         Double-click · reset zoom<br>
-        Drag · pan when zoomed
+        Drag · pan when zoomed<br>
+        C · toggle live mode<br>
+        M · cycle live effects
       </div>
     </div>
   </div>
@@ -321,6 +375,8 @@ select.ss2 option{background:var(--sur)}
             </div>
             <canvas id="pvc"></canvas>
             <div id="sel-ov"></div>
+            <div id="motion-ov" title="Motion heatmap"></div>
+            <div id="cam-mode-badge">◈ LIVE ASCII</div>
             <div id="cam-warn">⚠ Camera blocked in iframe context.<br>Download this file and open directly in your browser to enable camera.</div>
           </div>
         </div>
@@ -359,6 +415,16 @@ select.ss2 option{background:var(--sur)}
         </div>
         <div class="zoom-toast" id="out-zt"></div>
       </div>
+      <!-- Live Recording Bar -->
+      <div id="live-bar">
+        <span class="live" style="flex-shrink:0"></span>
+        <span style="font-size:8px;color:var(--acc);letter-spacing:2px">LIVE ASCII</span>
+        <div id="live-motion-bar"><div id="live-motion-fill"></div></div>
+        <span id="live-rec-time"><span class="rec-dot"></span><span id="live-rec-s">0:00</span></span>
+        <button class="lb" onclick="captureFromLive()" title="Freeze current frame">⬡ CAPTURE</button>
+        <button class="lb red" id="live-rec-btn" onclick="toggleLiveRecord()">⏺ REC</button>
+        <button class="lb" onclick="stopLiveMode()">⏹ STOP</button>
+      </div>
     </div>
 
   </div><!-- /cnt -->
@@ -375,6 +441,8 @@ select.ss2 option{background:var(--sur)}
   <div class="st">ANIM <b id="st-anim">STATIC</b></div>
   <div class="st-sep"></div>
   <div class="st">MODE <b id="st-mode">—</b></div>
+  <div class="st-sep"></div>
+  <div class="st" id="st-motion-wrap" style="display:none">MOTION <b id="st-motion">—</b></div>
   <span id="gl-badge">CANVAS 2D</span>
 </div>
 
@@ -488,7 +556,7 @@ void main(){
 // ── WEBGL INIT ────────────────────────────────────────────
 let WGL = null;
 function initWebGL(canvas) {
-  const gl = canvas.getContext('webgl2',{antialias:false,preserveDrawingBuffer:true,alpha:false,powerPreference:'high-performance'});
+  const gl = canvas.getContext('webgl2',{antialias:false,preserveDrawingBuffer:true,alpha:true,powerPreference:'high-performance',premultipliedAlpha:false});
   if(!gl) return null;
   function mkS(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){console.error(gl.getShaderInfoLog(s));return null;}return s;}
   const vs=mkS(gl.VERTEX_SHADER,VS_SRC), fs=mkS(gl.FRAGMENT_SHADER,FS_SRC);
@@ -518,10 +586,11 @@ function initWebGL(canvas) {
 }
 
 function wglRender(particles, cellW, cellH) {
+  asciiCvs.style.setProperty('--canvas-bg', S.bgColor);
   const {gl,prog,U,vao,iBuf,instF,MAX,STRIDE}=WGL;
   const bg=hRGB(S.bgColor);
   gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
-  gl.clearColor(bg[0],bg[1],bg[2],1); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
   gl.useProgram(prog); gl.bindVertexArray(vao);
   const acell=[ATLAS.CW/ATLAS.cvs.width, ATLAS.CH/ATLAS.cvs.height];
   gl.uniform2f(U.res,gl.canvas.width,gl.canvas.height);
@@ -555,9 +624,10 @@ function wglRender(particles, cellW, cellH) {
 let C2D=null;
 function c2dRender(particles,cellW,cellH){
   const ctx=C2D, cw=ctx.canvas.width, ch=ctx.canvas.height;
-  ctx.fillStyle=S.bgColor; ctx.fillRect(0,0,cw,ch);
+  asciiCvs.style.setProperty('--canvas-bg', S.bgColor);
+  ctx.clearRect(0,0,cw,ch);
   const fs=Math.max(3,Math.min(cellW/.601,cellH/1.2));
-  ctx.font=`${fs}px 'Courier New',monospace`;
+  ctx.font=`${fs}px 'Noto Sans Mono','Segoe UI Emoji','Apple Color Emoji','Courier New',monospace`;
   ctx.textBaseline='top'; ctx.shadowBlur=S.glowAmount;
   ctx.shadowColor=S.useOriginal?'rgba(255,255,255,.3)':S.fgColor;
   for(const p of particles){
@@ -1074,7 +1144,7 @@ function updateParticles(t,dt){
     case 'rain':
       for(const p of S.particles){
         const phase2=(p.col*.37+p.phase)%(S.rows*.45);
-        const front=((t*S.speed*2.2)+phase2)%S.rows;
+        const front=((t*2.2)+phase2)%S.rows;
         const dist=Math.abs(p.row-front);
         p.x=p.targetX;p.scale=1;
         p.y=p.targetY+Math.sin(t+p.col*.4)*ch*S.amp*.05;
@@ -1091,7 +1161,7 @@ function updateParticles(t,dt){
         p.a=S.baseOpacity;p.scale=.8+.2*Math.abs(Math.sin(t+p.phase));p.charIdx=p.origCharIdx;
       }break;
     case 'explode':{
-      if(t-S.explodeLastBurst>(2.2/S.speed)){
+      if(t-S.explodeLastBurst>2.2){
         S.explodeLastBurst=t;
         for(const p of S.particles){
           const angle=Math.atan2(p.targetY-gCY,p.targetX-gCX)+(Math.random()-.5)*1.2;
@@ -1106,7 +1176,7 @@ function updateParticles(t,dt){
       }break;}
     case 'gravity':{
       const floorY=S.gridOY+S.gridH+ch*2;
-      if(t-S.gravLastReset>(4.5/Math.max(.1,S.speed))){
+      if(t-S.gravLastReset>4.5){
         S.gravLastReset=t;
         for(const p of S.particles){p.y=p.targetY-(S.gridH*.6+Math.random()*S.gridH*.8);p.vy=0;p.vx=0;p.settled=false;}
       }
@@ -1148,6 +1218,18 @@ function updateParticles(t,dt){
   }
 }
 
+// ── GLOW via CSS filter (works on top of WebGL and Canvas2D) ─────
+function applyGlowFilter(){
+  if(S.glowAmount>0){
+    const col=S.useOriginal?'rgba(255,255,255,0.7)':S.fgColor;
+    const r=(S.glowAmount*0.5).toFixed(1);
+    const r2=(S.glowAmount*1.4).toFixed(1);
+    asciiCvs.style.filter=`drop-shadow(0 0 ${r}px ${col}) drop-shadow(0 0 ${r2}px ${col})`;
+  } else {
+    asciiCvs.style.filter='none';
+  }
+}
+
 // ── RENDER ────────────────────────────────────────────────
 function doRender(){
   if(!S.particles.length)return;
@@ -1157,6 +1239,7 @@ function doRender(){
   }
   if(WGL)wglRender(S.particles,S.cellW,S.cellH);
   else if(C2D)c2dRender(S.particles,S.cellW,S.cellH);
+  applyGlowFilter();
 }
 
 function renderLoop(ts){
@@ -1202,7 +1285,7 @@ function sc(key,rawVal){
     case 'contrast':S.contrast=v/10;document.getElementById('v-contrast').textContent=S.contrast.toFixed(1);scheduleConvert();break;
     case 'brightness':S.brightness=parseInt(rawVal);document.getElementById('v-bright').textContent=(parseInt(rawVal)>0?'+':'')+rawVal;scheduleConvert();break;
     case 'charset':S.charset=rawVal;scheduleConvert();break;
-    case 'glow':S.glowAmount=v;document.getElementById('v-glow').textContent=rawVal;instantRender();break;
+    case 'glow':S.glowAmount=v;document.getElementById('v-glow').textContent=rawVal;applyGlowFilter();instantRender();break;
     case 'opacity':S.baseOpacity=v/100;document.getElementById('v-opacity').textContent=rawVal;instantRender();break;
     case 'speed':S.speed=v/10;document.getElementById('v-speed').textContent=S.speed.toFixed(1)+'×';break;
     case 'amp':S.amp=v/10;document.getElementById('v-amp').textContent=S.amp.toFixed(1);instantRender();break;
@@ -1214,7 +1297,12 @@ function setAnimMode(m){
   S.animMode=m;S.explodeLastBurst=S.t-999;S.gravLastReset=S.t-999;
   if(S.glitchRowOff)S.glitchRowOff.fill(0);S.t=0;S.tPrev=null;
   document.getElementById('st-anim').textContent=m.toUpperCase();
-  if(S.particles.length){if(S.isAnim){cancelAnimationFrame(S.rafId);S.rafId=requestAnimationFrame(renderLoop);}else renderSingle();}
+  document.getElementById('sel-anim').value=m;
+  if(S.particles.length){
+    if(m==='none'){pauseAnim();renderSingle();}
+    else if(S.isAnim){cancelAnimationFrame(S.rafId);S.rafId=requestAnimationFrame(renderLoop);}
+    else{playAnim();}  // auto-start when picking an animation
+  }
 }
 function setRenderMode(m){
   S.renderMode=m;
@@ -1254,7 +1342,7 @@ const SWATCHES=[
     el.appendChild(d);
   });
 })();
-function setSwatch(el,sw){document.querySelectorAll('.sw').forEach(e=>e.classList.remove('on'));el.classList.add('on');S.fgColor=sw.fg;S.bgColor=sw.bg;S.useOriginal=sw.fg==='original';instantRender();}
+function setSwatch(el,sw){document.querySelectorAll('.sw').forEach(e=>e.classList.remove('on'));el.classList.add('on');S.fgColor=sw.fg;S.bgColor=sw.bg;S.useOriginal=sw.fg==='original';applyGlowFilter();instantRender();}
 
 // ── RANDOMIZE ─────────────────────────────────────────────
 function randomize(){
@@ -1307,13 +1395,15 @@ function gifBuildPalette(imgData, maxColors) {
   }
   let pal = [...freq.entries()]
     .sort((a,b) => b[1]-a[1])
-    .slice(0, maxColors)
+    .slice(0, maxColors-1)
     .map(([k]) => [((k>>10)&31)<<3, ((k>>5)&31)<<3, (k&31)<<3]);
+  // Index 0 is transparent — reserve it with a unique dark slot
+  pal.unshift([0,0,0]);
   if (pal.length < 2) pal.push([255,255,255]);
   // GIF requires palette size to be a power of 2
   const bits = Math.max(2, Math.ceil(Math.log2(pal.length)));
   const palSz = 1 << bits;
-  while (pal.length < palSz) pal.push([0,0,0]);
+  while (pal.length < palSz) pal.push([1,1,1]);
   return { pal, bits };
 }
 
@@ -1324,12 +1414,13 @@ function gifMapPixels(imgData, pal) {
   const out = new Uint8Array(n);
   const cache = new Map();
   for (let i = 0; i < n; i++) {
+    if (d[i*4+3] < 80) { out[i]=0; continue; } // transparent → palette index 0
     const r=d[i*4], g=d[i*4+1], b=d[i*4+2];
     const k = (r<<16)|(g<<8)|b;
     let idx = cache.get(k);
     if (idx === undefined) {
-      let best=1e9, bi=0;
-      for (let j=0; j<pal.length; j++) {
+      let best=1e9, bi=1; // start at 1, skip reserved transparent slot
+      for (let j=1; j<pal.length; j++) {
         const dr=r-pal[j][0], dg=g-pal[j][1], db=b-pal[j][2];
         const dist=dr*dr+dg*dg+db*db;
         if (dist < best) { best=dist; bi=j; }
@@ -1402,11 +1493,12 @@ function gifEncode(frames, w, h, delayCs) {
 
   for (const frame of frames) {
     const idx=gifMapPixels(frame,pal);
-    // Graphic Control Extension
+    // Graphic Control Extension — transparent color index = 0
+    // packed field: disposal=2 (restore bg), transparent flag=1
     out.push(0x21,0xF9,0x04,
-      0x04,                         // disposal=restore background
+      0x05,                         // packed: disposal=1, transparent flag=1
       delayCs&0xFF, delayCs>>8,     // delay (1/100 s units)
-      0x00,0x00);
+      0x00,0x00);                   // transparent color index = 0
     // Image Descriptor
     out.push(0x2C,...u16(0),...u16(0),...u16(w),...u16(h),0x00);
     out.push(lzwMin);
@@ -1425,22 +1517,79 @@ function gifEncode(frames, w, h, delayCs) {
   return new Uint8Array(out);
 }
 
-// Snapshot the current ASCII canvas, scaled to GIF_MAX_W, as an ImageData.
+// Snapshot current frame at GIF resolution using transparent renderer.
 function gifCaptureFrame() {
   const srcW=asciiCvs.width, srcH=asciiCvs.height;
   const scale=Math.min(1, GIF_MAX_W/Math.max(srcW,1));
   const w=Math.max(1,~~(srcW*scale)), h=Math.max(1,~~(srcH*scale));
+  const cvs=renderTransparent(w,h);
   if (!GIF_CVS) { GIF_CVS=document.createElement('canvas'); GIF_CTX_2D=GIF_CVS.getContext('2d'); }
   if (GIF_CVS.width!==w||GIF_CVS.height!==h) { GIF_CVS.width=w; GIF_CVS.height=h; }
-  GIF_CTX_2D.drawImage(asciiCvs,0,0,w,h);
+  GIF_CTX_2D.clearRect(0,0,w,h);
+  GIF_CTX_2D.drawImage(cvs,0,0,w,h);
   return GIF_CTX_2D.getImageData(0,0,w,h);
+}
+
+// ── TRANSPARENT RENDERER ─────────────────────────────────
+// Renders current particles onto a temporary 2D canvas with
+// NO background fill, producing a transparent PNG or GIF frame.
+let TX_CVS=null, TX_CTX=null;
+
+function renderTransparent(w, h){
+  if(!TX_CVS){ TX_CVS=document.createElement('canvas'); TX_CTX=TX_CVS.getContext('2d'); }
+  TX_CVS.width=w; TX_CVS.height=h;
+  TX_CTX.clearRect(0,0,w,h); // fully transparent start
+
+  const scaleX=w/asciiCvs.width, scaleY=h/asciiCvs.height;
+  const cellW=S.cellW*scaleX, cellH=S.cellH*scaleY;
+  const fs=Math.max(2, Math.min(cellW/0.58, cellH/1.1));
+  TX_CTX.font=`${fs}px monospace`;
+  TX_CTX.textBaseline='middle';
+  TX_CTX.textAlign='center';
+
+  if(S.glowAmount>0){
+    TX_CTX.shadowBlur=S.glowAmount*1.5;
+    TX_CTX.shadowColor=S.useOriginal?'rgba(255,255,255,0.8)':S.fgColor;
+  } else {
+    TX_CTX.shadowBlur=0;
+  }
+
+  for(const p of S.particles){
+    if(p.a<0.005) continue;
+    if(S.renderMode==='dots'||S.renderMode==='both'){
+      const rad=Math.max(0.5,(1-p.lum)*cellW*0.46*p.dotScale*S.amp);
+      TX_CTX.beginPath();
+      TX_CTX.arc(p.x*scaleX, p.y*scaleY, rad, 0, Math.PI*2);
+      TX_CTX.fillStyle=S.useOriginal
+        ?`rgba(${~~(p.r*255)},${~~(p.g*255)},${~~(p.b*255)},${p.a})`
+        :hexA(S.fgColor,p.a);
+      TX_CTX.fill();
+    }
+    if(S.renderMode==='ascii'||S.renderMode==='both'){
+      if(!p.charIdx) continue;
+      const ch=ATLAS.CHARS[p.charIdx-1]; if(!ch) continue;
+      TX_CTX.fillStyle=S.useOriginal
+        ?`rgba(${~~(p.r*255)},${~~(p.g*255)},${~~(p.b*255)},${p.a})`
+        :hexA(S.fgColor,p.a);
+      TX_CTX.fillText(ch, p.x*scaleX, p.y*scaleY);
+    }
+  }
+  return TX_CVS;
 }
 
 // ── EXPORT ────────────────────────────────────────────────
 function exportPNG(){
   if(!S.particles.length){notify('NOTHING TO EXPORT');return;}
   renderSingle();
-  setTimeout(()=>{const a=document.createElement('a');a.download='ascii-motion.png';a.href=asciiCvs.toDataURL('image/png');a.click();notify('PNG SAVED');},60);
+  setTimeout(()=>{
+    // Render at full canvas resolution with transparent background
+    const cvs=renderTransparent(asciiCvs.width, asciiCvs.height);
+    const a=document.createElement('a');
+    a.download='ascii-motion.png';
+    a.href=cvs.toDataURL('image/png');
+    a.click();
+    notify('PNG SAVED (transparent)');
+  },60);
 }
 
 // Recording state
@@ -1550,6 +1699,13 @@ document.addEventListener('keydown',e=>{
     case '=':case '+':zoomStep('out',+1);break;
     case '-':zoomStep('out',-1);break;
     case '0':resetZoom('out');break;
+    case 'c':case 'C':toggleLiveMode();break;
+    case 'm':case 'M':{
+      const effects=['scatter','distort','mutate','trails'];
+      const ci=effects.indexOf(CAM.effect);
+      setLiveEffect(effects[(ci+1)%effects.length]);
+      notify('EFFECT: '+CAM.effect.toUpperCase());
+      break;}
   }
 });
 
@@ -1559,12 +1715,599 @@ document.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer.f
 
 // ── RESIZE ────────────────────────────────────────────────
 const rsObs=new ResizeObserver(()=>{
-  if(S.srcImg)drawPreview(S.srcImg);
-  if(S.particles.length){sizeOutputCanvas();doConvert();}
+  if(CAM && CAM.active) sizeOutputCanvas();
+  else if(S.srcImg)drawPreview(S.srcImg);
+  if(!CAM.active && S.particles.length){sizeOutputCanvas();doConvert();}
   if(S.sel)positionSelOverlay();
 });
 rsObs.observe(document.getElementById('pw'));
 rsObs.observe(document.getElementById('out-vp'));
+
+
+// ═══════════════════════════════════════════════════════════════
+//  ◈  LIVE ASCII CAMERA MODE
+//  Three modules: cameraEngine · motionDetection · videoRecorder
+// ═══════════════════════════════════════════════════════════════
+
+// ── cameraEngine ──────────────────────────────────────────────
+const CAM = {
+  // State
+  active:   false,
+  paused:   false,
+  stream:   null,
+  video:    null,
+  offCvs:   null,   // offscreen canvas for frame grab (low-res)
+  offCtx:   null,
+  fCvs:     null,   // full-res canvas for preview display
+  fCtx:     null,
+  rafId:    null,
+  frameN:   0,
+  lastConvFrame: -1,
+  fps:      0, fpsCount:0, fpsLast:0,
+
+  // Settings
+  density:  60,
+  mirror:   true,
+  origColor:false,
+  effect:   'scatter',
+  motionSens: 0.4,
+  spread:   1.0,
+
+  // Motion detection
+  prevGray: null,
+  motionGrid: null,   // per-cell motion intensity 0-1
+  motionTotal:0,
+
+  // Trail system
+  trails:   [],      // [{col,row,char,alpha,age}]
+  trailMax: 800,
+
+  // Live video recording
+  recActive:  false,
+  recFrames:  [],
+  recStartT:  0,
+  recIntervalId: null,
+};
+
+// Offscreen processing canvas — small for performance
+const PROC_W = 320, PROC_H = 240;
+
+async function toggleLiveMode(){
+  if(CAM.active){ stopLiveMode(); return; }
+
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:{ width:{ideal:1280}, height:{ideal:720}, facingMode:'user' }
+    });
+    CAM.stream = stream;
+
+    // Create video element
+    if(!CAM.video){ CAM.video=document.createElement('video'); CAM.video.autoplay=true; CAM.video.playsInline=true; CAM.video.muted=true; }
+    CAM.video.srcObject = stream;
+    await CAM.video.play();
+
+    // Offscreen low-res canvas for processing
+    if(!CAM.offCvs){ CAM.offCvs=document.createElement('canvas'); CAM.offCtx=CAM.offCvs.getContext('2d',{willReadFrequently:true}); }
+    CAM.offCvs.width=PROC_W; CAM.offCvs.height=PROC_H;
+
+    // Full-res canvas for preview display
+    if(!CAM.fCvs){ CAM.fCvs=document.createElement('canvas'); CAM.fCtx=CAM.fCvs.getContext('2d'); }
+
+    CAM.active=true; CAM.paused=false; CAM.frameN=0;
+    CAM.prevGray=null; CAM.trails=[];
+
+    // UI — switch to live mode
+    document.getElementById('live-sb').style.display='block';
+    document.getElementById('live-bar').classList.add('on');
+    document.getElementById('live-btn').textContent='◈ LIVE ON';
+    document.getElementById('live-btn').classList.add('lit');
+    document.getElementById('cam-mode-badge').classList.add('on');
+    document.getElementById('empty-hint').style.display='none';
+    document.getElementById('anim-btn').disabled=true;
+
+    // Show camera preview in left panel
+    previewCvs.style.display='block';
+    document.getElementById('dz').style.display='none';
+    document.getElementById('cam-warn').style.display='none';
+
+    // Stop any existing animation loop
+    if(S.isAnim){ S.isAnim=false; if(S.rafId)cancelAnimationFrame(S.rafId); }
+
+    // Start live loop
+    CAM.rafId = requestAnimationFrame(liveLoop);
+    notify('◈ LIVE ASCII MODE · ACTIVE');
+
+  } catch(err){
+    const w = document.getElementById('cam-warn');
+    w.style.display = 'block';
+    w.innerHTML = err.name==='NotAllowedError'
+      ? '⚠ Camera blocked.<br><b>Open this file directly in your browser</b> (not in an iframe) to use Live ASCII mode.'
+      : `⚠ ${err.message}`;
+    notify('CAMERA ERROR');
+  }
+}
+
+function stopLiveMode(){
+  if(!CAM.active) return;
+  CAM.active = false;
+  if(CAM.rafId){ cancelAnimationFrame(CAM.rafId); CAM.rafId=null; }
+  if(CAM.stream) CAM.stream.getTracks().forEach(t=>t.stop());
+  if(CAM.recActive) finishLiveRecord();
+
+  document.getElementById('live-bar').classList.remove('on');
+  document.getElementById('live-btn').textContent='◈ LIVE ASCII';
+  document.getElementById('live-btn').classList.remove('lit');
+  document.getElementById('cam-mode-badge').classList.remove('on');
+  document.getElementById('motion-ov').classList.remove('show');
+  document.getElementById('anim-btn').disabled = S.particles.length===0;
+  CAM.stream=null;
+  notify('LIVE MODE STOPPED');
+}
+
+function captureFromLive(){
+  if(!CAM.active||!S.particles.length) return;
+  // Freeze: copy current live particles as static snapshot
+  // srcImg = current preview canvas snapshot
+  const img=new Image();
+  img.onload=()=>{
+    S.srcImg=img;
+    document.getElementById('img-info').textContent=`${img.naturalWidth}×${img.naturalHeight}`;
+    document.getElementById('st-mode').textContent='LIVE CAP';
+    notify('FRAME CAPTURED · LIVE ASCII');
+  };
+  img.src=previewCvs.toDataURL();
+}
+
+// ── liveLoop — runs at ~30fps ──────────────────────────────────
+function liveLoop(ts){
+  if(!CAM.active){ return; }
+  CAM.rafId = requestAnimationFrame(liveLoop);
+  if(CAM.paused) return;
+
+  // FPS counter
+  CAM.fpsCount++;
+  if(ts-CAM.fpsLast>=1000){
+    CAM.fps=CAM.fpsCount; CAM.fpsCount=0; CAM.fpsLast=ts;
+    document.getElementById('st-fps').textContent=CAM.fps+' (live)';
+    document.getElementById('st-motion-wrap').style.display='flex';
+    document.getElementById('st-motion').textContent=(CAM.motionTotal*100).toFixed(1)+'%';
+    document.getElementById('st-anim').textContent=CAM.effect.toUpperCase();
+  }
+
+  if(!CAM.video||CAM.video.readyState<2) return;
+
+  const vw=CAM.video.videoWidth||640, vh=CAM.video.videoHeight||480;
+
+  // 1. Draw to low-res offscreen canvas for processing
+  const aspect = vw/vh;
+  const pw = PROC_W, ph = Math.round(PROC_W/aspect);
+  if(CAM.offCvs.height!==ph) CAM.offCvs.height=ph;
+  if(CAM.mirror){
+    CAM.offCtx.save();
+    CAM.offCtx.translate(pw,0); CAM.offCtx.scale(-1,1);
+    CAM.offCtx.drawImage(CAM.video,0,0,pw,ph);
+    CAM.offCtx.restore();
+  } else {
+    CAM.offCtx.drawImage(CAM.video,0,0,pw,ph);
+  }
+  const imgData = CAM.offCtx.getImageData(0,0,pw,ph);
+
+  // 2. Draw preview in left panel
+  const wrap=document.getElementById('pw');
+  const maxW=wrap.clientWidth-4, maxH=wrap.clientHeight-4;
+  const r=Math.min(maxW/vw, maxH/vh);
+  const dispW=Math.round(vw*r), dispH=Math.round(vh*r);
+  if(CAM.fCvs.width!==dispW||CAM.fCvs.height!==dispH){ CAM.fCvs.width=dispW; CAM.fCvs.height=dispH; }
+  if(CAM.mirror){
+    CAM.fCtx.save(); CAM.fCtx.translate(dispW,0); CAM.fCtx.scale(-1,1);
+    CAM.fCtx.drawImage(CAM.video,0,0,dispW,dispH);
+    CAM.fCtx.restore();
+  } else {
+    CAM.fCtx.drawImage(CAM.video,0,0,dispW,dispH);
+  }
+  if(previewCvs.width!==dispW||previewCvs.height!==dispH){ previewCvs.width=dispW; previewCvs.height=dispH; }
+  previewCtx.drawImage(CAM.fCvs,0,0);
+
+  // 3. ASCII conversion from live frame
+  liveConvert(imgData, pw, ph);
+
+  // 4. Motion detection
+  motionDetect(imgData, pw, ph);
+
+  // 5. Apply live effects to particles
+  applyLiveEffect();
+
+  // 6. Render
+  doRender();
+
+  // 7. Update motion meter in live-bar
+  const motPct = Math.min(100, CAM.motionTotal*200);
+  document.getElementById('live-motion-fill').style.width = motPct+'%';
+
+  // 8. GIF recording tick
+  if(CAM.recActive) liveRecordTick();
+
+  CAM.frameN++;
+}
+
+// ── liveConvert — convert frame to particles ───────────────────
+function liveConvert(imgData, pw, ph){
+  const cols = CAM.density;
+  const cellW = pw/cols, cellH = cellW/0.56;
+  const rows  = Math.ceil(ph/cellH);
+  const cs    = CHARSETS[S.charset];
+
+  // Resize output canvas if needed
+  sizeOutputCanvas();
+  const cw=asciiCvs.width, ch=asciiCvs.height;
+
+  // Fit grid to fill output canvas
+  const fitScale = Math.min(cw/(cols*cellW), ch/(rows*cellH));
+  const drawCW = cellW*fitScale, drawCH = cellH*fitScale;
+  const gW = cols*drawCW, gH = rows*drawCH;
+  const gOX = (cw-gW)*.5, gOY = (ch-gH)*.5;
+
+  // Cache previous particle positions for smooth transition
+  const prevMap = new Map();
+  for(const p of S.particles) prevMap.set(p.col*10000+p.row, p);
+
+  const particles=[];
+  for(let row=0;row<rows;row++){
+    for(let col=0;col<cols;col++){
+      const px=~~(col*cellW), py=~~(row*cellH);
+      const pw2=Math.max(1,~~cellW), ph2=Math.max(1,~~cellH);
+      let r=0,g=0,b=0,n=0;
+      for(let dy=0;dy<ph2&&py+dy<ph;dy++)
+        for(let dx=0;dx<pw2&&px+dx<pw;dx++){
+          const i=((py+dy)*pw+(px+dx))*4;
+          r+=imgData.data[i]; g+=imgData.data[i+1]; b+=imgData.data[i+2]; n++;
+        }
+      if(!n)continue;
+      r/=n;g/=n;b/=n;
+      let lum=(0.299*r+0.587*g+0.114*b)/255;
+      lum=Math.pow(lum,1/S.contrast);
+      lum=Math.max(0,Math.min(1,lum+S.brightness/100));
+      if(S.invert)lum=1-lum;
+      const ci=~~((1-lum)*(cs.length-1));
+      const char=cs[Math.max(0,Math.min(cs.length-1,ci))];
+      const charIdx=(!char||char===' ')?0:(ATLAS.CHAR_MAP.get(char)??0);
+      const tx=gOX+col*drawCW+drawCW*.5;
+      const ty=gOY+row*drawCH+drawCH*.5;
+
+      // Inherit velocity from same cell if it exists
+      const prev = prevMap.get(col*10000+row);
+      const vx = prev?.vx*0.6||0, vy=prev?.vy*0.6||0;
+
+      particles.push({
+        x:prev?prev.x:tx, y:prev?prev.y:ty,
+        targetX:tx, targetY:ty, vx, vy,
+        charIdx, origCharIdx:charIdx,
+        r: CAM.origColor?r/255:hRGB(S.fgColor)[0],
+        g: CAM.origColor?g/255:hRGB(S.fgColor)[1],
+        b: CAM.origColor?b/255:hRGB(S.fgColor)[2],
+        lum, a:S.baseOpacity, scale:1,
+        dotScale:Math.max(0,1-lum),
+        phase:prev?.phase||Math.random()*Math.PI*2,
+        col, row,
+        revealT:0, dvx:0, dvy:0, settled:true,
+        trailAlpha:0,
+      });
+    }
+  }
+
+  S.particles=particles;
+  S.cols=cols; S.rows=rows;
+  S.cellW=drawCW; S.cellH=drawCH;
+  S.gridOX=gOX; S.gridOY=gOY; S.gridW=gW; S.gridH=gH;
+
+  document.getElementById('st-grid').textContent=`${cols}×${rows}`;
+  document.getElementById('st-part').textContent=particles.length;
+}
+
+// ── motionDetection ────────────────────────────────────────────
+function motionDetect(imgData, pw, ph){
+  const cols=CAM.density, rows=S.rows;
+  const cellW=pw/cols, cellH=cellW/0.56;
+  const d=imgData.data;
+  const thresh = CAM.motionSens;
+
+  if(!CAM.prevGray||CAM.prevGray.length!==cols*rows){
+    CAM.prevGray=new Float32Array(cols*rows);
+    CAM.motionGrid=new Float32Array(cols*rows);
+  }
+
+  let totalMotion=0;
+  for(let row=0;row<rows;row++){
+    for(let col=0;col<cols;col++){
+      const px=~~(col*cellW), py=~~(row*cellH);
+      const pw2=Math.max(1,~~cellW), ph2=Math.max(1,~~cellH);
+      let gray=0,n=0;
+      for(let dy=0;dy<ph2&&py+dy<ph;dy++)
+        for(let dx=0;dx<pw2&&px+dx<pw;dx++){
+          const i=((py+dy)*pw+(px+dx))*4;
+          gray+=(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])/255;
+          n++;
+        }
+      if(!n)continue;
+      gray/=n;
+      const idx=row*cols+col;
+      const delta=Math.abs(gray-CAM.prevGray[idx]);
+      // Smooth: keep 40% of previous motion + 60% of new
+      CAM.motionGrid[idx]=CAM.motionGrid[idx]*0.4+(delta>thresh?delta:0)*0.6;
+      totalMotion+=CAM.motionGrid[idx];
+      CAM.prevGray[idx]=gray;
+    }
+  }
+  CAM.motionTotal = totalMotion/(cols*rows);
+
+  // Draw motion heatmap on preview overlay
+  drawMotionOverlay(cols, rows);
+}
+
+function drawMotionOverlay(cols, rows){
+  const ov = document.getElementById('motion-ov');
+  const pw2=previewCvs.width, ph=previewCvs.height;
+  if(!pw2||!ph) return;
+
+  // Only show if there is significant motion
+  if(CAM.motionTotal<0.01){ ov.classList.remove('show'); return; }
+  ov.classList.add('show');
+
+  // Create a temporary canvas for the heatmap
+  if(!CAM._hmCvs){ CAM._hmCvs=document.createElement('canvas'); }
+  CAM._hmCvs.width=cols; CAM._hmCvs.height=rows;
+  const ctx=CAM._hmCvs.getContext('2d');
+  const id=ctx.createImageData(cols,rows);
+  for(let i=0;i<cols*rows;i++){
+    const m=Math.min(1,CAM.motionGrid[i]*8);
+    id.data[i*4  ]=~~(m*0);
+    id.data[i*4+1]=~~(m*232);
+    id.data[i*4+2]=~~(m*122);
+    id.data[i*4+3]=~~(m*120);
+  }
+  ctx.putImageData(id,0,0);
+  ov.style.cssText=`position:absolute;inset:0;pointer-events:none;z-index:4;opacity:1;transition:opacity .1s;background:none`;
+  ov.style.backgroundImage=`url(${CAM._hmCvs.toDataURL()})`;
+  ov.style.backgroundSize='100% 100%';
+}
+
+// ── applyLiveEffect — per-frame particle physics ───────────────
+function applyLiveEffect(){
+  if(!S.particles.length||!CAM.motionGrid) return;
+  const mg=CAM.motionGrid;
+  const cw=S.cellW, ch=S.cellH;
+  const spread=CAM.spread*40;
+
+  switch(CAM.effect){
+
+    case 'scatter':
+      // Particles near motion cells explode outward then spring back
+      for(let i=0;i<S.particles.length;i++){
+        const p=S.particles[i];
+        const mi=p.row*S.cols+p.col;
+        const m=mg[mi]||0;
+        if(m>0.04){
+          // Radial force from motion
+          const angle=Math.atan2(p.targetY-S.gridOY-S.gridH*.5, p.targetX-S.gridOX-S.gridW*.5);
+          const force=m*spread*3;
+          p.vx+=Math.cos(angle)*force*(0.5+Math.random()*.5);
+          p.vy+=Math.sin(angle)*force*(0.5+Math.random()*.5);
+        }
+        // Spring back to target
+        p.vx+=(p.targetX-p.x)*0.12;
+        p.vy+=(p.targetY-p.y)*0.12;
+        p.vx*=0.82; p.vy*=0.82;
+        p.x+=p.vx; p.y+=p.vy;
+        p.a=S.baseOpacity;
+        p.charIdx=p.origCharIdx;
+      }
+      break;
+
+    case 'distort':
+      // Motion distorts the grid like a ripple spreading from motion zones
+      for(let i=0;i<S.particles.length;i++){
+        const p=S.particles[i];
+        // Accumulate distortion from neighbouring cells
+        let dx=0, dy=0;
+        const col=p.col, row=p.row;
+        for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++){
+          const nc=col+dc, nr=row+dr;
+          if(nc<0||nc>=S.cols||nr<0||nr>=S.rows) continue;
+          const m=mg[nr*S.cols+nc]||0;
+          if(m<0.02) continue;
+          const dist=Math.sqrt(dc*dc+dr*dr)+0.001;
+          const wave=Math.sin(S.t*4-dist*1.5)*m*spread/dist;
+          dx+=dc/dist*wave; dy+=dr/dist*wave;
+        }
+        p.x=p.targetX+dx*cw*.6;
+        p.y=p.targetY+dy*ch*.6;
+        p.a=S.baseOpacity;
+        p.vx=0; p.vy=0;
+        p.charIdx=p.origCharIdx;
+      }
+      break;
+
+    case 'mutate':
+      // High-motion cells randomly swap characters
+      for(let i=0;i<S.particles.length;i++){
+        const p=S.particles[i];
+        const mi=p.row*S.cols+p.col;
+        const m=mg[mi]||0;
+        p.x=p.targetX; p.y=p.targetY; p.vx=0; p.vy=0;
+        if(m>0.05&&Math.random()<m*CAM.spread*0.8){
+          // Mutate to a random char from current charset
+          const cs=CHARSETS[S.charset];
+          const ri=~~(Math.random()*cs.length);
+          const c=cs[ri];
+          p.charIdx=(!c||c===' ')?0:(ATLAS.CHAR_MAP.get(c)??0);
+          p.a=S.baseOpacity;
+          // Colour flash on mutation
+          if(!CAM.origColor){
+            p.r=0.9; p.g=1.0; p.b=0.7;
+          }
+        } else {
+          p.charIdx=p.origCharIdx;
+          // Fade colour back
+          const tr=hRGB(S.fgColor);
+          p.r+=(tr[0]-p.r)*0.15;
+          p.g+=(tr[1]-p.g)*0.15;
+          p.b+=(tr[2]-p.b)*0.15;
+          p.a=S.baseOpacity;
+        }
+      }
+      break;
+
+    case 'trails': {
+      // Moving cells leave temporary ASCII ghost trails
+      const toAdd=[];
+      for(let i=0;i<S.particles.length;i++){
+        const p=S.particles[i];
+        const mi=p.row*S.cols+p.col;
+        const m=mg[mi]||0;
+        // Scatter with motion
+        if(m>0.04){
+          p.vx+=(Math.random()-.5)*spread*m*2;
+          p.vy+=(Math.random()-.5)*spread*m*2;
+          // Spawn trail ghost at current pos
+          if(CAM.trails.length<CAM.trailMax && Math.random()<m*2){
+            toAdd.push({x:p.x, y:p.y, charIdx:p.origCharIdx, alpha:m*.8, age:0, r:p.r,g:p.g,b:p.b});
+          }
+        }
+        p.vx+=(p.targetX-p.x)*0.14;
+        p.vy+=(p.targetY-p.y)*0.14;
+        p.vx*=0.80; p.vy*=0.80;
+        p.x+=p.vx; p.y+=p.vy;
+        p.a=S.baseOpacity;
+        p.charIdx=p.origCharIdx;
+      }
+      // Add new trails
+      CAM.trails.push(...toAdd);
+      // Inject trail ghosts as extra render-only particles
+      for(let t=CAM.trails.length-1;t>=0;t--){
+        const tr=CAM.trails[t];
+        tr.age++;
+        tr.alpha*=0.88;
+        if(tr.alpha<0.02){ CAM.trails.splice(t,1); continue; }
+        // Push a ghost particle (won't be in S.particles permanently)
+        S.particles.push({
+          x:tr.x, y:tr.y, targetX:tr.x, targetY:tr.y,
+          vx:0, vy:0, charIdx:tr.charIdx, origCharIdx:tr.charIdx,
+          r:tr.r, g:tr.g, b:tr.b, lum:0.5, a:tr.alpha*S.baseOpacity,
+          scale:0.9, dotScale:0.4, phase:0, col:-1, row:-1,
+          revealT:0, dvx:0, dvy:0, settled:true, trailAlpha:tr.alpha,
+        });
+      }
+      break;
+    }
+  }
+}
+
+// ── LIVE CONTROLS ─────────────────────────────────────────────
+function setLiveEffect(e){
+  CAM.effect=e;
+  ['scatter','distort','mutate','trails'].forEach(n=>{
+    document.getElementById('lm-'+n).classList.toggle('on',n===e);
+  });
+  // Reset trails when switching away
+  if(e!=='trails') CAM.trails=[];
+}
+
+function scLive(key,rawVal){
+  const v=parseFloat(rawVal);
+  switch(key){
+    case 'msens':
+      CAM.motionSens=v/20;
+      document.getElementById('v-msens').textContent=CAM.motionSens.toFixed(2);
+      break;
+    case 'mspread':
+      CAM.spread=v/10;
+      document.getElementById('v-mspread').textContent=CAM.spread.toFixed(1);
+      break;
+    case 'ldens':
+      CAM.density=parseInt(rawVal);
+      document.getElementById('v-ldens').textContent=rawVal;
+      // Reset motion grid for new density
+      CAM.prevGray=null; CAM.motionGrid=null;
+      break;
+  }
+}
+
+function toggleLiveMirror(){
+  CAM.mirror=!CAM.mirror;
+  const b=document.getElementById('lmirror-tog');
+  b.textContent='MIRROR '+(CAM.mirror?'ON':'OFF');
+  b.classList.toggle('on',CAM.mirror);
+}
+
+function toggleLiveOrigColor(){
+  CAM.origColor=!CAM.origColor;
+  const b=document.getElementById('lcolor-tog');
+  b.textContent='COLOR '+(CAM.origColor?'ON':'OFF');
+  b.classList.toggle('on',CAM.origColor);
+}
+
+// ── videoRecorder (GIF-based, works everywhere) ────────────────
+const LIVE_REC_FPS=10;
+let liveRecStart=0, liveRecTimer=null;
+
+function toggleLiveRecord(){
+  if(CAM.recActive){ finishLiveRecord(); return; }
+  if(!CAM.active){ notify('START LIVE MODE FIRST'); return; }
+
+  CAM.recActive=true; CAM.recFrames=[];
+  liveRecStart=Date.now();
+  document.getElementById('live-rec-btn').textContent='⏹ STOP REC';
+  document.getElementById('live-rec-btn').classList.add('on');
+  document.getElementById('live-rec-time').classList.add('on');
+  notify('⏺ RECORDING LIVE ASCII');
+}
+
+function liveRecordTick(){
+  if(!CAM.recActive) return;
+  const elapsed=(Date.now()-liveRecStart)/1000;
+  const s=~~elapsed, m=~~(s/60);
+  document.getElementById('live-rec-s').textContent=`${m}:${(s%60).toString().padStart(2,'0')}`;
+  // Capture a frame every 1000/LIVE_REC_FPS ms
+  if(!CAM._lastRecT) CAM._lastRecT=0;
+  if(Date.now()-CAM._lastRecT < 1000/LIVE_REC_FPS) return;
+  CAM._lastRecT=Date.now();
+  CAM.recFrames.push(gifCaptureFrame());
+  // Auto-stop at 15 seconds
+  if(elapsed>=15) finishLiveRecord();
+}
+
+function finishLiveRecord(){
+  CAM.recActive=false; CAM._lastRecT=0;
+  document.getElementById('live-rec-btn').textContent='⏺ REC';
+  document.getElementById('live-rec-btn').classList.remove('on');
+  document.getElementById('live-rec-time').classList.remove('on');
+
+  if(!CAM.recFrames.length){ notify('NO FRAMES TO ENCODE'); return; }
+
+  // Encode GIF in background
+  document.getElementById('rec-title').textContent='⚙ ENCODING LIVE GIF';
+  document.getElementById('rec-sub').textContent=`${CAM.recFrames.length} frames captured`;
+  document.getElementById('rec-rf').style.width='100%';
+  document.getElementById('rec-rp').textContent='please wait...';
+  document.getElementById('rec-ov').classList.add('on');
+
+  const frames=[...CAM.recFrames]; CAM.recFrames=[];
+  setTimeout(()=>{
+    try{
+      const first=frames[0];
+      const delayCs=Math.round(100/LIVE_REC_FPS);
+      const gifData=gifEncode(frames,first.width,first.height,delayCs);
+      const blob=new Blob([gifData],{type:'image/gif'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download='ascii-live.gif';
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},2000);
+      notify('LIVE GIF SAVED ✓ '+(gifData.byteLength/1024).toFixed(0)+' KB');
+    } catch(e){ console.error(e); notify('ENCODE ERROR'); }
+    document.getElementById('rec-ov').classList.remove('on');
+  },80);
+}
 
 // ── INIT ──────────────────────────────────────────────────
 function init(){
